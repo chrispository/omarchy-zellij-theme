@@ -79,6 +79,7 @@ Zellij returns to its default theme on the next session.
 | ----------------- | -------------------------------------------------------------------- |
 | `zellij.kdl.tpl`  | Zellij theme template using `{{ key_rgb }}` placeholders             |
 | `theme-set`        | Hook script -- converts RGB format and injects theme into config.kdl |
+| `theme-notify`     | Floating pane notification shown on theme change                     |
 | `install.sh`       | Installer (symlink, hook, config, initial apply)                     |
 | `uninstall.sh`     | Uninstaller (reverts all changes)                                    |
 
