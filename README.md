@@ -6,7 +6,9 @@
 Syncs your [Zellij](https://zellij.dev/) theme with your [Omarchy](https://omarchy.org/) system theme automatically.
 
 <p align="center">
-  <video src="assets/showcase.mp4" autoplay loop muted playsinline width="100%"></video>
+  
+https://github.com/user-attachments/assets/0be5f3c9-fbba-479c-9f52-bd312aed5a8c
+
 </p>
 
 Every time you run `omarchy-theme-set`, Zellij picks up the same color palette in real time.
