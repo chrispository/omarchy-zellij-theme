@@ -3,6 +3,14 @@ title: "omarchy-zellij-theme"
 description: "Syncs your Zellij theme with your Omarchy system theme automatically."
 ---
 
+Syncs your [Zellij](https://zellij.dev/) theme with your [Omarchy](https://omarchy.org/) system theme automatically.
+
+<p align="center">
+  
+<video src="https://github.com/user-attachments/assets/0be5f3c9-fbba-479c-9f52-bd312aed5a8c" controls muted playsinline style="max-width: 100%; border-radius: 8px;"></video>
+
+</p>
+
 Every time you run `omarchy-theme-set`, Zellij picks up the same color palette in real time.
 
 ## How it works
