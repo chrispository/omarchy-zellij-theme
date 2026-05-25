@@ -23,7 +23,8 @@ echo "[1/5] Symlinked template -> $THEMED_DIR/zellij.kdl.tpl"
 if [[ -f "$HOOKS_DIR/theme-set" ]]; then
   if grep -q "omarchy-zellij" "$HOOKS_DIR/theme-set" 2>/dev/null; then
     echo "[2/5] Hook already installed, updating..."
-    cp "$SCRIPT_DIR/theme-set" "$HOOKS_DIR/theme-set"
+    rm "$HOOKS_DIR/theme-set"
+    ln -s "$SCRIPT_DIR/theme-set" "$HOOKS_DIR/theme-set"
   else
     echo "[2/5] Existing theme-set hook found. Appending Zellij integration..."
     echo "" >> "$HOOKS_DIR/theme-set"
@@ -32,7 +33,7 @@ if [[ -f "$HOOKS_DIR/theme-set" ]]; then
     echo "# --- omarchy-zellij-theme integration (end) ---" >> "$HOOKS_DIR/theme-set"
   fi
 else
-  cp "$SCRIPT_DIR/theme-set" "$HOOKS_DIR/theme-set"
+  ln -s "$SCRIPT_DIR/theme-set" "$HOOKS_DIR/theme-set"
   echo "[2/5] Installed hook -> $HOOKS_DIR/theme-set"
 fi
 chmod +x "$HOOKS_DIR/theme-set"

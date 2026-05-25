@@ -17,3 +17,29 @@ CLEAN_CONFIG=$(sed "\%${START_MARKER}%,\%${END_MARKER}%d" "$ZELLIJ_CONFIG")
 
 # Append new theme block
 printf '%s\n\n%s\n%s\n%s\n' "$CLEAN_CONFIG" "$START_MARKER" "$THEME_BLOCK" "$END_MARKER" > "$ZELLIJ_CONFIG"
+
+# --- Theme change notification ---
+THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null | tr -d '\n')
+COLORS_FILE="$HOME/.config/omarchy/current/theme/colors.toml"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+NOTIFY_SCRIPT="$SCRIPT_DIR/theme-notify"
+
+if [[ -z "$THEME_NAME" ]] || [[ ! -f "$COLORS_FILE" ]] || [[ ! -f "$NOTIFY_SCRIPT" ]]; then
+  exit 0
+fi
+
+ACTIVE_SESSIONS=$(zellij list-sessions 2>/dev/null | grep -v "EXITED" | awk '{print $1}' | sed 's/\x1b\[[0-9;]*m//g')
+
+if [[ -n "$ACTIVE_SESSIONS" ]]; then
+  while IFS= read -r session; do
+    ZELLIJ_SESSION_NAME="$session" zellij action new-pane \
+      --floating \
+      --close-on-exit \
+      --borderless true \
+      --width "100%" \
+      --height "100%" \
+      --x "0" \
+      --y "0" \
+      -- "$NOTIFY_SCRIPT" "$THEME_NAME" "$COLORS_FILE" &
+  done <<< "$ACTIVE_SESSIONS"
+fi
