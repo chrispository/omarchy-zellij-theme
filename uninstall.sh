@@ -1,63 +1,97 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-THEMED_DIR="$HOME/.config/omarchy/themed"
-HOOKS_DIR="$HOME/.config/omarchy/hooks"
+THEME_TEMPLATE="$HOME/.config/omarchy/themed/zellij.kdl.tpl"
+THEME_SET_HOOK="$HOME/.config/omarchy/hooks/theme-set.d/omarchy-zellij-theme"
+LEGACY_HOOK="$HOME/.config/omarchy/hooks/theme-set"
 ZELLIJ_CONFIG="$HOME/.config/zellij/config.kdl"
 OLD_THEME_FILE="$HOME/.config/zellij/themes/omarchy.kdl"
 START_MARKER="// --- omarchy-zellij-theme (start) ---"
 END_MARKER="// --- omarchy-zellij-theme (end) ---"
 
-echo "=== omarchy-zellij-theme uninstaller ==="
+timestamped_backup() {
+    local path="$1"
+    local backup="${path}.bak.$(date +%s)"
+    cp -- "$path" "$backup"
+    printf 'Backup: %s\n' "$backup"
+}
 
-# 1. Remove template symlink
-if [[ -L "$THEMED_DIR/zellij.kdl.tpl" ]]; then
-  rm "$THEMED_DIR/zellij.kdl.tpl"
-  echo "[1/5] Removed template symlink."
+remove_marked_block() {
+    local path="$1"
+    local start_marker="$2"
+    local end_marker="$3"
+    local temp
+
+    grep -qF "$start_marker" "$path" || return 0
+    temp="$(mktemp "${path}.XXXXXX")"
+    sed "\%$start_marker%,\%$end_marker%d" "$path" > "$temp"
+    chmod --reference="$path" "$temp"
+    mv -- "$temp" "$path"
+}
+
+remove_our_symlink() {
+    local link="$1"
+    local target="$2"
+
+    if [[ -L "$link" ]] && [[ "$(readlink -f "$link")" == "$(readlink -f "$target")" ]]; then
+        rm -- "$link"
+        return 0
+    fi
+
+    return 1
+}
+
+printf '%s\n' '=== omarchy-zellij-theme uninstaller ==='
+
+if remove_our_symlink "$THEME_TEMPLATE" "$SCRIPT_DIR/zellij.kdl.tpl"; then
+    printf '%s\n' '[1/5] Removed template symlink.'
 else
-  echo "[1/5] Template symlink not found, skipping."
+    printf '%s\n' '[1/5] Template symlink not found or belongs to another installation; left unchanged.'
 fi
 
-# 2. Remove hook
-if [[ -f "$HOOKS_DIR/theme-set" ]]; then
-  if grep -q "omarchy-zellij-theme integration" "$HOOKS_DIR/theme-set" 2>/dev/null; then
-    sed -i '/# --- omarchy-zellij-theme integration (start) ---/,/# --- omarchy-zellij-theme integration (end) ---/d' "$HOOKS_DIR/theme-set"
-    echo "[2/5] Removed Zellij integration from existing hook."
-  elif grep -q "omarchy-zellij" "$HOOKS_DIR/theme-set" 2>/dev/null; then
-    rm "$HOOKS_DIR/theme-set"
-    echo "[2/5] Removed theme-set hook."
-  else
-    echo "[2/5] Hook doesn't contain our integration, skipping."
-  fi
+if remove_our_symlink "$THEME_SET_HOOK" "$SCRIPT_DIR/theme-set"; then
+    printf '%s\n' '[2/5] Removed theme-set hook.'
 else
-  echo "[2/5] No theme-set hook found, skipping."
+    printf '%s\n' '[2/5] Theme-set hook not found or belongs to another installation; left unchanged.'
 fi
 
-# 3. Comment out theme in Zellij config
-if [[ -f "$ZELLIJ_CONFIG" ]] && grep -q '^theme "omarchy"' "$ZELLIJ_CONFIG" 2>/dev/null; then
-  sed -i 's|^theme "omarchy"|// theme "omarchy"|' "$ZELLIJ_CONFIG"
-  echo "[3/5] Commented out theme in Zellij config."
-else
-  echo "[3/5] Theme not set in Zellij config, skipping."
+if [[ -L "$LEGACY_HOOK" ]] && [[ "$(readlink -f "$LEGACY_HOOK")" == "$(readlink -f "$SCRIPT_DIR/theme-set")" ]]; then
+    rm -- "$LEGACY_HOOK"
+    printf '%s\n' '[2/5] Removed legacy theme-set hook.'
+elif [[ -f "$LEGACY_HOOK" ]]; then
+    remove_marked_block "$LEGACY_HOOK" \
+        '# --- omarchy-zellij-theme integration (start) ---' \
+        '# --- omarchy-zellij-theme integration (end) ---'
 fi
 
-# 4. Remove inline theme block from config.kdl
-if [[ -f "$ZELLIJ_CONFIG" ]] && grep -qF "$START_MARKER" "$ZELLIJ_CONFIG" 2>/dev/null; then
-  sed -i "\%${START_MARKER}%,\%${END_MARKER}%d" "$ZELLIJ_CONFIG"
-  echo "[4/5] Removed inline theme block from config.kdl."
+if [[ -f "$ZELLIJ_CONFIG" ]]; then
+    config_tmp="$(mktemp "$(dirname "$ZELLIJ_CONFIG")/.config.kdl.XXXXXX")"
+    sed "\%$START_MARKER%,\%$END_MARKER%d" "$ZELLIJ_CONFIG" > "$config_tmp"
+    sed -i 's/^theme "omarchy"$/\/\/ theme "omarchy"/' "$config_tmp"
+
+    if cmp -s "$config_tmp" "$ZELLIJ_CONFIG"; then
+        rm -- "$config_tmp"
+        printf '%s\n' '[3/5] No active omarchy theme configuration found.'
+    else
+        timestamped_backup "$ZELLIJ_CONFIG"
+        chmod --reference="$ZELLIJ_CONFIG" "$config_tmp"
+        mv -- "$config_tmp" "$ZELLIJ_CONFIG"
+        printf '%s\n' '[3/5] Removed the active omarchy theme configuration.'
+    fi
 else
-  echo "[4/5] No inline theme block found, skipping."
+    printf '%s\n' '[3/5] Zellij config not found; skipped.'
 fi
 
-# 5. Clean up old theme file from previous approach
 if [[ -f "$OLD_THEME_FILE" ]]; then
-  rm "$OLD_THEME_FILE"
-  echo "[5/5] Removed old theme file ($OLD_THEME_FILE)."
+    rm -- "$OLD_THEME_FILE"
+    printf '%s\n' '[4/5] Removed old theme file.'
 else
-  echo "[5/5] No old theme file to clean up."
+    printf '%s\n' '[4/5] No old theme file found.'
 fi
 
-echo ""
-echo "=== Uninstall complete ==="
+rmdir "$HOME/.config/omarchy/hooks/theme-set.d" 2>/dev/null || true
+printf '%s\n' '[5/5] Cleanup complete.'
+
+printf '\n%s\n' '=== Uninstall complete ==='

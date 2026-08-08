@@ -1,45 +1,124 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-GENERATED_THEME="$HOME/.config/omarchy/current/theme/zellij.kdl"
+set -euo pipefail
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+COLORS_FILE="$HOME/.config/omarchy/current/theme/colors.toml"
 ZELLIJ_CONFIG="$HOME/.config/zellij/config.kdl"
+TEMPLATE_FILE="$SCRIPT_DIR/zellij.kdl.tpl"
 START_MARKER="// --- omarchy-zellij-theme (start) ---"
 END_MARKER="// --- omarchy-zellij-theme (end) ---"
 
-if [[ ! -f "$GENERATED_THEME" ]] || [[ ! -f "$ZELLIJ_CONFIG" ]]; then
-  exit 0
+rendered_theme=''
+sed_script=''
+rendered_zellij=''
+config_tmp=''
+
+cleanup() {
+    [[ -z "$rendered_theme" ]] || rm -f -- "$rendered_theme"
+    [[ -z "$sed_script" ]] || rm -f -- "$sed_script"
+    [[ -z "$rendered_zellij" ]] || rm -f -- "$rendered_zellij"
+    [[ -z "$config_tmp" ]] || rm -f -- "$config_tmp"
+}
+trap cleanup EXIT
+
+hex_to_rgb() {
+    local hex="${1#\#}"
+    printf '%d,%d,%d' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
+}
+
+render_template() {
+    local colors_file="$1"
+    local template_file="$2"
+    local output_file="$3"
+    local key value rgb
+
+    sed_script="$(mktemp)"
+
+    while IFS='=' read -r key value; do
+        key="${key// /}"
+        key="${key//$'\t'/}"
+        key="${key//\"/}"
+        key="${key//\'/}"
+        [[ -n "$key" && "$key" != \#* ]] || continue
+
+        value="${value// /}"
+        value="${value//$'\t'/}"
+        value="${value//\"/}"
+        value="${value//\'/}"
+        value="${value//$'\r'/}"
+
+        printf 's|{{ %s }}|%s|g\n' "$key" "$value" >> "$sed_script"
+        printf 's|{{ %s_strip }}|%s|g\n' "$key" "${value#\#}" >> "$sed_script"
+
+        if [[ "$value" =~ ^#[[:xdigit:]]{6}$ ]]; then
+            rgb="$(hex_to_rgb "$value")"
+            printf 's|{{ %s_rgb }}|%s|g\n' "$key" "$rgb" >> "$sed_script"
+        fi
+    done < "$colors_file"
+
+    sed -f "$sed_script" "$template_file" > "$output_file"
+    rm -f -- "$sed_script"
+    sed_script=''
+}
+
+if [[ ! -f "$COLORS_FILE" || ! -f "$ZELLIJ_CONFIG" || ! -f "$TEMPLATE_FILE" ]]; then
+    exit 0
 fi
 
-# Convert "R,G,B" to "R G B" for Zellij
-THEME_BLOCK=$(sed 's/\([0-9]\{1,3\}\),\([0-9]\{1,3\}\),\([0-9]\{1,3\}\)/\1 \2 \3/g' "$GENERATED_THEME")
+rendered_theme="$(mktemp)"
+rendered_zellij="$(mktemp)"
+render_template "$COLORS_FILE" "$TEMPLATE_FILE" "$rendered_theme"
 
-# Remove previous theme block if present
-CLEAN_CONFIG=$(sed "\%${START_MARKER}%,\%${END_MARKER}%d" "$ZELLIJ_CONFIG")
+# Zellij KDL expects RGB values separated by spaces, while Omarchy templates
+# expose RGB values as comma-separated strings.
+sed 's/\([0-9]\{1,3\}\),\([0-9]\{1,3\}\),\([0-9]\{1,3\}\)/\1 \2 \3/g' \
+    "$rendered_theme" > "$rendered_zellij"
 
-# Append new theme block
-printf '%s\n\n%s\n%s\n%s\n' "$CLEAN_CONFIG" "$START_MARKER" "$THEME_BLOCK" "$END_MARKER" > "$ZELLIJ_CONFIG"
+if ! grep -qE '^themes[[:space:]]*\{' "$rendered_zellij" || ! grep -qE '^    omarchy[[:space:]]*\{' "$rendered_zellij"; then
+    printf '%s\n' 'omarchy-zellij-theme: rendered theme block is invalid' >&2
+    exit 1
+fi
 
-# --- Theme change notification ---
-THEME_NAME=$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null | tr -d '\n')
+config_tmp="$(mktemp "$(dirname "$ZELLIJ_CONFIG")/.config.kdl.XXXXXX")"
+sed "\%$START_MARKER%,\%$END_MARKER%d" "$ZELLIJ_CONFIG" > "$config_tmp"
+{
+    printf '\n%s\n' "$START_MARKER"
+    cat "$rendered_zellij"
+    printf '%s\n' "$END_MARKER"
+} >> "$config_tmp"
+
+if cmp -s "$config_tmp" "$ZELLIJ_CONFIG"; then
+    exit 0
+fi
+
+chmod --reference="$ZELLIJ_CONFIG" "$config_tmp"
+mv -- "$config_tmp" "$ZELLIJ_CONFIG"
+config_tmp=''
+
+if [[ "${OMARCHY_ZELLIJ_THEME_NOTIFY:-1}" != 1 ]] || ! command -v zellij >/dev/null 2>&1; then
+    exit 0
+fi
+
+THEME_NAME="${1:-$(cat "$HOME/.config/omarchy/current/theme.name" 2>/dev/null || true)}"
 COLORS_FILE="$HOME/.config/omarchy/current/theme/colors.toml"
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 NOTIFY_SCRIPT="$SCRIPT_DIR/theme-notify"
 
-if [[ -z "$THEME_NAME" ]] || [[ ! -f "$COLORS_FILE" ]] || [[ ! -f "$NOTIFY_SCRIPT" ]]; then
-  exit 0
+if [[ -z "$THEME_NAME" || ! -f "$COLORS_FILE" || ! -x "$NOTIFY_SCRIPT" ]]; then
+    exit 0
 fi
 
-ACTIVE_SESSIONS=$(zellij list-sessions 2>/dev/null | grep -v "EXITED" | awk '{print $1}' | sed 's/\x1b\[[0-9;]*m//g')
-
-if [[ -n "$ACTIVE_SESSIONS" ]]; then
-  while IFS= read -r session; do
+ACTIVE_SESSIONS="$(zellij list-sessions --no-formatting 2>/dev/null | awk '!/EXITED/ {print $1}')"
+while IFS= read -r session; do
+    [[ -n "$session" ]] || continue
     ZELLIJ_SESSION_NAME="$session" zellij action new-pane \
-      --floating \
-      --close-on-exit \
-      --borderless true \
-      --width "100%" \
-      --height "100%" \
-      --x "0" \
-      --y "0" \
-      -- "$NOTIFY_SCRIPT" "$THEME_NAME" "$COLORS_FILE" &
-  done <<< "$ACTIVE_SESSIONS"
-fi
+        --floating \
+        --close-on-exit \
+        --borderless true \
+        --width '100%' \
+        --height '100%' \
+        --x '0' \
+        --y '0' \
+        -- "$NOTIFY_SCRIPT" "$THEME_NAME" "$COLORS_FILE" &
+done <<< "$ACTIVE_SESSIONS"
