@@ -27,9 +27,9 @@ themes {
         ribbon_unselected {
             base {{ background_rgb }}
             background {{ accent_rgb }}
-            emphasis_0 {{ color1_rgb }}
-            emphasis_1 {{ foreground_rgb }}
-            emphasis_2 {{ color4_rgb }}
+            emphasis_0 {{ color5_rgb }}
+            emphasis_1 {{ color5_rgb }}
+            emphasis_2 {{ color5_rgb }}
             emphasis_3 {{ color5_rgb }}
         }
         table_title {
