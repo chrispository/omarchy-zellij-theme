@@ -38,7 +38,7 @@ colors.toml ──> zellij.kdl.tpl ──> rendered theme (R,G,B)
 | Text base                | `foreground`                                             |
 | Backgrounds              | `background`, `color0` (selected)                        |
 | Ribbon selected          | `accent` bg, `background` text                           |
-| Ribbon unselected        | `color7` bg, `background` text                           |
+| Ribbon unselected        | `accent` bg, `background` text                           |
 | Frame selected           | `accent`                                                 |
 | Frame unselected         | `color8`                                                 |
 | Frame highlight          | `color3`                                                 |

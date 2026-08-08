@@ -26,7 +26,7 @@ themes {
         }
         ribbon_unselected {
             base {{ background_rgb }}
-            background {{ color7_rgb }}
+            background {{ accent_rgb }}
             emphasis_0 {{ color1_rgb }}
             emphasis_1 {{ foreground_rgb }}
             emphasis_2 {{ color4_rgb }}
