@@ -32,6 +32,25 @@ hex_to_rgb() {
     printf '%d,%d,%d' "0x${hex:0:2}" "0x${hex:2:2}" "0x${hex:4:2}"
 }
 
+trim_trailing_blank_lines() {
+    local input_file="$1"
+    local output_file="$2"
+
+    awk '
+        {
+            lines[NR] = $0
+            if ($0 !~ /^[[:space:]]*$/) {
+                last = NR
+            }
+        }
+        END {
+            for (line = 1; line <= last; line++) {
+                print lines[line]
+            }
+        }
+    ' "$input_file" > "$output_file"
+}
+
 render_template() {
     local colors_file="$1"
     local template_file="$2"
@@ -109,13 +128,14 @@ themes_end_line="$(awk '
 ' "$clean_config")"
 
 if [[ -n "$themes_end_line" ]]; then
-    head -n "$((themes_end_line - 1))" "$clean_config" > "$config_tmp"
+    head -n "$((themes_end_line - 1))" "$clean_config" |
+        trim_trailing_blank_lines /dev/stdin "$config_tmp"
     printf '\n%s\n' "$START_MARKER" >> "$config_tmp"
     cat "$rendered_theme_node" >> "$config_tmp"
     printf '%s\n' "$END_MARKER" >> "$config_tmp"
     tail -n +"$themes_end_line" "$clean_config" >> "$config_tmp"
 else
-    cat "$clean_config" > "$config_tmp"
+    trim_trailing_blank_lines "$clean_config" "$config_tmp"
     printf '\n%s\n' "$START_MARKER" >> "$config_tmp"
     cat "$rendered_zellij" >> "$config_tmp"
     printf '%s\n' "$END_MARKER" >> "$config_tmp"
