@@ -13,12 +13,16 @@ END_MARKER="// --- omarchy-zellij-theme (end) ---"
 rendered_theme=''
 sed_script=''
 rendered_zellij=''
+rendered_theme_node=''
+clean_config=''
 config_tmp=''
 
 cleanup() {
     [[ -z "$rendered_theme" ]] || rm -f -- "$rendered_theme"
     [[ -z "$sed_script" ]] || rm -f -- "$sed_script"
     [[ -z "$rendered_zellij" ]] || rm -f -- "$rendered_zellij"
+    [[ -z "$rendered_theme_node" ]] || rm -f -- "$rendered_theme_node"
+    [[ -z "$clean_config" ]] || rm -f -- "$clean_config"
     [[ -z "$config_tmp" ]] || rm -f -- "$config_tmp"
 }
 trap cleanup EXIT
@@ -81,13 +85,43 @@ if ! grep -qE '^themes[[:space:]]*\{' "$rendered_zellij" || ! grep -qE '^    oma
     exit 1
 fi
 
+rendered_theme_node="$(mktemp)"
+sed '1d;$d' "$rendered_zellij" > "$rendered_theme_node"
+
 config_tmp="$(mktemp "$(dirname "$ZELLIJ_CONFIG")/.config.kdl.XXXXXX")"
-sed "\%$START_MARKER%,\%$END_MARKER%d" "$ZELLIJ_CONFIG" > "$config_tmp"
-{
-    printf '\n%s\n' "$START_MARKER"
-    cat "$rendered_zellij"
-    printf '%s\n' "$END_MARKER"
-} >> "$config_tmp"
+clean_config="$(mktemp)"
+sed "\%$START_MARKER%,\%$END_MARKER%d" "$ZELLIJ_CONFIG" > "$clean_config"
+
+themes_end_line="$(awk '
+    !found && $0 ~ /^[[:space:]]*themes[[:space:]]*\{/ {
+        found = 1
+        depth = 1
+        next
+    }
+    found {
+        depth += gsub(/\{/, "{")
+        depth -= gsub(/\}/, "}")
+        if (depth == 0) {
+            print NR
+            exit
+        }
+    }
+' "$clean_config")"
+
+if [[ -n "$themes_end_line" ]]; then
+    head -n "$((themes_end_line - 1))" "$clean_config" > "$config_tmp"
+    printf '\n%s\n' "$START_MARKER" >> "$config_tmp"
+    cat "$rendered_theme_node" >> "$config_tmp"
+    printf '%s\n' "$END_MARKER" >> "$config_tmp"
+    tail -n +"$themes_end_line" "$clean_config" >> "$config_tmp"
+else
+    cat "$clean_config" > "$config_tmp"
+    printf '\n%s\n' "$START_MARKER" >> "$config_tmp"
+    cat "$rendered_zellij" >> "$config_tmp"
+    printf '%s\n' "$END_MARKER" >> "$config_tmp"
+fi
+
+rm -f -- "$clean_config"
 
 if cmp -s "$config_tmp" "$ZELLIJ_CONFIG"; then
     exit 0
